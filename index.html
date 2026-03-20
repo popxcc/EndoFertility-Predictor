@@ -511,42 +511,69 @@ function switchTab(name) {
 }
 
 // ===== PREDICTION =============================================================
-function runPrediction() {
-  const age = +document.getElementById('age').value || 32;
-  const amh = +document.getElementById('amh').value || 1.8;
-  const afc = +document.getElementById('afc').value || 8;
-  const infDur = +document.getElementById('inf_dur').value || 3;
-  const dysm = +document.getElementById('dysm').value || 5;
-  const endoSize = +document.getElementById('endo_size').value || 35;
-  const stage = +document.getElementById('endo_stage').value || 3;
-  const txPlan = document.getElementById('treatment_plan').value;
-  const priSurg = +document.getElementById('prior_surgery').value || 1;
+async function runPrediction() {
+  // ---- Encode categorical inputs (matching training script) ----
+  const txMap = { expectant: 1, iui: 1, ivf: 2, surgery_then_ivf: 0 };
+  // 训练编码：腹腔镜=0, 自然±IUI=1, 直接IVF=2
+  // App下拉映射：surgery_then_ivf→0, expectant/iui→1, ivf→2
 
-  let pregScore = 0.55;
-  if (txPlan === 'ivf') pregScore += 0.25;
-  else if (txPlan === 'surgery_then_ivf') pregScore += 0.15;
-  else if (txPlan === 'iui') pregScore += 0.05;
-  else pregScore -= 0.15;
-  if (endoSize > 50) pregScore -= 0.12; else if (endoSize < 20) pregScore += 0.05;
-  if (amh < 1) pregScore -= 0.1; else if (amh > 3) pregScore += 0.08;
-  if (afc < 5) pregScore -= 0.08;
-  if (age > 38) pregScore -= 0.1;
-  if (stage === 4) pregScore -= 0.07;
-  pregScore = Math.min(0.97, Math.max(0.05, pregScore));
+  const infTypeMap = { primary: 0, secondary: 1 };
+  // 训练编码：原发=0, 继发=1
 
-  let lbScore = pregScore * 0.88;
-  if (infDur > 5) lbScore -= 0.12 * (infDur - 5) / 10;
-  else if (infDur < 2) lbScore += 0.04;
-  if (dysm >= 8) lbScore -= 0.16;
-  else if (dysm >= 6) lbScore -= 0.08;
-  else if (dysm <= 2) lbScore += 0.04;
-  if (priSurg >= 2) lbScore -= 0.07;
-  if (age > 40) lbScore -= 0.08;
-  lbScore = Math.min(0.95, Math.max(0.04, lbScore));
+  const payload = {
+    age:      +document.getElementById('age').value || 32,
+    inf_dur:  +document.getElementById('inf_dur').value || 3,
+    inf_type: infTypeMap[document.getElementById('inf_type').value] ?? 1,
+    dysm:     +document.getElementById('dysm').value || 5,
+    amh:      +document.getElementById('amh').value || 1.8,
+    afc:      +document.getElementById('afc').value || 8,
+    endo_size: +document.getElementById('endo_size').value || 35,
+    bilateral: 0,   // 表单暂无此字段，默认单侧=0（与训练一致）
+    treatment: txMap[document.getElementById('treatment_plan').value] ?? 2
+  };
 
-  const pregPct = Math.round(pregScore * 100);
-  const lbPct = Math.round(lbScore * 100);
+  // Show loading state
+  document.getElementById('result-content').innerHTML =
+    '<div style="text-align:center;padding:2rem;color:var(--color-text-muted)">Calculating…</div>';
+
+  try {
+    const res = await fetch('/api/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error('API error ' + res.status);
+    const data = await res.json();
+
+    const pregPct = Math.round(data.pregnancy_prob * 100);
+    const lbPct   = Math.round(data.livebirth_prob * 100);
+
+    // ---- Render results (original UI logic, unchanged) ----
+    renderResults(pregPct, lbPct);
+
+  } catch (e) {
+    console.error(e);
+    document.getElementById('result-content').innerHTML =
+      '<div style="text-align:center;padding:2rem;color:var(--color-error);font-size:var(--text-sm)">' +
+      '⚠️ Prediction service unavailable.<br>' +
+      '<span style="color:var(--color-text-faint);font-size:var(--text-xs)">Please ensure the API is deployed at /api/predict</span>' +
+      '</div>';
+  }
+}
+
+function renderResults(pregPct, lbPct) {
   const d = T[lang];
+
+  // SHAP contribution bars (heuristic, based on published SHAP patterns)
+  const txPlan    = document.getElementById('treatment_plan').value;
+  const amh       = +document.getElementById('amh').value || 1.8;
+  const afc       = +document.getElementById('afc').value || 8;
+  const age       = +document.getElementById('age').value || 32;
+  const endoSize  = +document.getElementById('endo_size').value || 35;
+  const infDur    = +document.getElementById('inf_dur').value || 3;
+  const dysm      = +document.getElementById('dysm').value || 5;
+  const priSurg   = +document.getElementById('prior_surgery').value || 1;
 
   const pregShap = [
     { n: d.shap_p[0], v: txPlan==='ivf'?85:txPlan==='iui'?45:25, dir: txPlan==='ivf'?'pos':'neg' },
