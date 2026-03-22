@@ -1,8 +1,0 @@
-{
-  "functions": {
-    "api/predict.py": {
-      "runtime": "python3.11",
-      "maxDuration": 10
-    }
-  }
-}
