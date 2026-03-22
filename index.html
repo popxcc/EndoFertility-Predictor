@@ -537,11 +537,11 @@ async function runPrediction() {
     '<div style="text-align:center;padding:2rem;color:var(--color-text-muted)">Calculating…</div>';
 
   try {
-    const res = await fetch('/api/predict', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    const res = await fetch('https://endo-api-msnh.onrender.com/predict', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload)
+});
 
     if (!res.ok) throw new Error('API error ' + res.status);
     const data = await res.json();
